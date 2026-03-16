@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw, ImageOps
 import aiohttp
 import io
 import os
+import asyncio
 from collections import defaultdict
 import time
 
@@ -44,9 +45,14 @@ async def on_member_join(member):
         return
 
     # Download avatar
-    async with aiohttp.ClientSession() as session:
-        async with session.get(str(member.display_avatar.url)) as resp:
-            avatar_data = await resp.read()
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(str(member.display_avatar.url)) as resp:
+                avatar_data = await resp.read()
+    except Exception as e:
+        print(f"Gagal download avatar: {e}")
+        await channel.send(f"Welcome {member.mention} ke **{member.guild.name}**! ")
+        return
 
     # Buat welcome card
     card = Image.new("RGB", (800, 300), color=(20, 20, 30))
@@ -67,7 +73,7 @@ async def on_member_join(member):
     output.seek(0)
 
     await channel.send(
-        f"Welcome {member.mention} ke **{member.guild.name}**! 🎉",
+        f"Welcome {member.mention} ke **{member.guild.name}**!",
         file=discord.File(output, "welcome.png")
     )
 
@@ -86,7 +92,7 @@ async def on_message(message):
     if len(spam_tracker[user_id]) >= SPAM_LIMIT:
         await message.delete()
         await message.channel.send(
-            f"{message.author.mention} ⚠️ Jangan spam! Pesan kamu dihapus.",
+            f"{message.author.mention} Jangan spam! Pesan kamu dihapus.",
             delete_after=5
         )
         spam_tracker[user_id] = []
@@ -98,18 +104,27 @@ async def on_message(message):
 @commands.has_permissions(kick_members=True)
 async def kick(ctx, member: discord.Member, *, reason="Tidak ada alasan"):
     await member.kick(reason=reason)
-    await ctx.send(f"✅ {member.name} telah di-kick. Alasan: {reason}")
+    await ctx.send(f"{member.name} telah di-kick. Alasan: {reason}")
 
 @bot.command()
 @commands.has_permissions(ban_members=True)
 async def ban(ctx, member: discord.Member, *, reason="Tidak ada alasan"):
     await member.ban(reason=reason)
-    await ctx.send(f"✅ {member.name} telah di-ban. Alasan: {reason}")
+    await ctx.send(f"{member.name} telah di-ban. Alasan: {reason}")
 
 @bot.command()
 @commands.has_permissions(manage_messages=True)
 async def clear(ctx, amount: int = 5):
     await ctx.channel.purge(limit=amount + 1)
-    await ctx.send(f"✅ {amount} pesan dihapus!", delete_after=3)
+    await ctx.send(f"{amount} pesan dihapus!", delete_after=3)
 
-bot.run(os.environ["TOKEN"])
+# ===== AUTO RECONNECT =====
+async def main():
+    while True:
+        try:
+            await bot.start(os.environ["TOKEN"])
+        except Exception as e:
+            print(f"Error: {e}, reconnecting in 5 seconds...")
+            await asyncio.sleep(5)
+
+asyncio.run(main())
