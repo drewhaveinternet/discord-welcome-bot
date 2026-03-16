@@ -1,8 +1,9 @@
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageDraw, ImageOps
 import aiohttp
 import io
+import os
 
 intents = discord.Intents.default()
 intents.members = True
@@ -42,20 +43,8 @@ async def on_member_join(member):
     output.seek(0)
 
     await channel.send(
-        f"Welcome {member.mention} ke **{member.guild.name}**! 🎉",
+        f"Welcome {member.mention} ke **{member.guild.name}**!",
         file=discord.File(output, "welcome.png")
     )
 
-import os
 bot.run(os.environ["TOKEN"])
-```
-
----
-
-## Step 3 - Buat File `requirements.txt`
-
-Buat file baru lagi bernama **`requirements.txt`** isi:
-```
-discord.py
-pillow
-aiohttp
