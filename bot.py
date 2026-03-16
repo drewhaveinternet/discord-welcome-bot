@@ -4,6 +4,8 @@ from PIL import Image, ImageDraw, ImageOps
 import aiohttp
 import io
 import os
+from collections import defaultdict
+import time
 
 intents = discord.Intents.default()
 intents.members = True
@@ -11,13 +13,30 @@ intents.message_content = True
 
 bot = commands.Bot(command_prefix="!", intents=intents)
 
+# ===== SETTINGS =====
+WELCOME_CHANNEL = "welcome"   # nama channel welcome
+AUTO_ROLE_NAME = "HCD Member"     # nama role yang dikasih saat join
+SPAM_LIMIT = 5                # maksimal pesan dalam waktu tertentu
+SPAM_TIME = 5                 # detik
+# ====================
+
+spam_tracker = defaultdict(list)
+
+# ===== WELCOME + AUTO ROLE =====
 @bot.event
 async def on_ready():
     print(f"Bot {bot.user} siap!")
 
 @bot.event
 async def on_member_join(member):
-    channel = discord.utils.get(member.guild.text_channels, name="welcome")
+    # Auto Role
+    role = discord.utils.get(member.guild.roles, name=AUTO_ROLE_NAME)
+    if role:
+        await member.add_roles(role)
+        print(f"Role {AUTO_ROLE_NAME} diberikan ke {member.name}")
+
+    # Welcome Card
+    channel = discord.utils.get(member.guild.text_channels, name=WELCOME_CHANNEL)
     if not channel:
         return
 
@@ -46,5 +65,46 @@ async def on_member_join(member):
         f"Welcome {member.mention} ke **{member.guild.name}**!",
         file=discord.File(output, "welcome.png")
     )
+
+# ===== ANTI SPAM =====
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+
+    user_id = message.author.id
+    now = time.time()
+
+    spam_tracker[user_id] = [t for t in spam_tracker[user_id] if now - t < SPAM_TIME]
+    spam_tracker[user_id].append(now)
+
+    if len(spam_tracker[user_id]) >= SPAM_LIMIT:
+        await message.delete()
+        await message.channel.send(
+            f"{message.author.mention} ⚠️ Jangan spam! Pesan kamu dihapus.",
+            delete_after=5
+        )
+        spam_tracker[user_id] = []
+
+    await bot.process_commands(message)
+
+# ===== MODERASI COMMANDS =====
+@bot.command()
+@commands.has_permissions(kick_members=True)
+async def kick(ctx, member: discord.Member, *, reason="Tidak ada alasan"):
+    await member.kick(reason=reason)
+    await ctx.send(f"✅ {member.name} telah di-kick. Alasan: {reason}")
+
+@bot.command()
+@commands.has_permissions(ban_members=True)
+async def ban(ctx, member: discord.Member, *, reason="Tidak ada alasan"):
+    await member.ban(reason=reason)
+    await ctx.send(f"✅ {member.name} telah di-ban. Alasan: {reason}")
+
+@bot.command()
+@commands.has_permissions(manage_messages=True)
+async def clear(ctx, amount: int = 5):
+    await ctx.channel.purge(limit=amount + 1)
+    await ctx.send(f"✅ {amount} pesan dihapus!", delete_after=3)
 
 bot.run(os.environ["TOKEN"])
