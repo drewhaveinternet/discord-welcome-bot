@@ -14,7 +14,7 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===== SETTINGS =====
-WELCOME_CHANNEL = "welcome"   # nama channel welcome
+WELCOME_CHANNEL = "🖐️welcome"   # nama channel welcome
 AUTO_ROLE_NAME = "HCD Member"     # nama role yang dikasih saat join
 SPAM_LIMIT = 5                # maksimal pesan dalam waktu tertentu
 SPAM_TIME = 5                 # detik
