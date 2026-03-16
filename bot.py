@@ -14,10 +14,9 @@ intents.message_content = True
 bot = commands.Bot(command_prefix="!", intents=intents)
 
 # ===== SETTINGS =====
-WELCOME_CHANNEL = "🖐️welcome"   # nama channel welcome
-AUTO_ROLE_NAME = "HCD Member"     # nama role yang dikasih saat join
-SPAM_LIMIT = 5                # maksimal pesan dalam waktu tertentu
-SPAM_TIME = 5                 # detik
+AUTO_ROLE_NAME = "HCD Member"
+SPAM_LIMIT = 5
+SPAM_TIME = 5
 # ====================
 
 spam_tracker = defaultdict(list)
@@ -35,15 +34,21 @@ async def on_member_join(member):
         await member.add_roles(role)
         print(f"Role {AUTO_ROLE_NAME} diberikan ke {member.name}")
 
-    # Welcome Card
-    channel = discord.utils.get(member.guild.text_channels, name=WELCOME_CHANNEL)
+    # Cari channel welcome otomatis
+    channel = None
+    for ch in member.guild.text_channels:
+        if "welcome" in ch.name.lower():
+            channel = ch
+            break
     if not channel:
         return
 
+    # Download avatar
     async with aiohttp.ClientSession() as session:
         async with session.get(str(member.display_avatar.url)) as resp:
             avatar_data = await resp.read()
 
+    # Buat welcome card
     card = Image.new("RGB", (800, 300), color=(20, 20, 30))
     draw = ImageDraw.Draw(card)
 
@@ -62,7 +67,7 @@ async def on_member_join(member):
     output.seek(0)
 
     await channel.send(
-        f"Welcome {member.mention} ke **{member.guild.name}**!",
+        f"Welcome {member.mention} ke **{member.guild.name}**! 🎉",
         file=discord.File(output, "welcome.png")
     )
 
