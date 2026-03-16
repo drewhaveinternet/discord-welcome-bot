@@ -1,6 +1,6 @@
 import discord
 from discord.ext import commands
-from PIL import Image, ImageDraw, ImageOps, ImageFilter, ImageFont
+from PIL import Image, ImageDraw, ImageOps, ImageFilter
 import aiohttp
 import io
 import os
@@ -19,15 +19,14 @@ bot = commands.Bot(command_prefix="!", intents=intents)
 AUTO_ROLE_NAME = "HCD Member"
 SPAM_LIMIT = 5
 SPAM_TIME = 5
+TICKET_CATEGORY = "Tickets"
+SUPPORT_ROLE = "Admin"
 # ====================
 
 spam_tracker = defaultdict(list)
 
-def hex_to_rgb(hex_color):
-    hex_color = hex_color.lstrip('#')
-    return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-
-def draw_hexagon(draw, cx, cy, size, fill=None, outline=None, width=2):
+# ===== WELCOME CARD =====
+def draw_hexagon(draw, cx, cy, size, fill=None, outline=None):
     points = []
     for i in range(6):
         angle = math.radians(60 * i - 30)
@@ -41,12 +40,9 @@ def draw_hexagon(draw, cx, cy, size, fill=None, outline=None, width=2):
 
 def make_welcome_card(avatar_data, username, member_count, server_name):
     W, H = 960, 340
-
-    # ── BASE BACKGROUND ──
     card = Image.new("RGB", (W, H), (8, 8, 12))
     draw = ImageDraw.Draw(card)
 
-    # ── BACKGROUND GRADIENT ──
     for y in range(H):
         ratio = y / H
         r = int(8 + 15 * (1 - ratio))
@@ -54,156 +50,100 @@ def make_welcome_card(avatar_data, username, member_count, server_name):
         b = int(12 + 25 * (1 - ratio))
         draw.line([(0, y), (W, y)], fill=(r, g, b))
 
-    # ── GRID PATTERN (FPS HUD style) ──
-    for x in range(0, W, 40):
-        draw.line([(x, 0), (x, H)], fill=(255, 100, 0, 10))
-    for y in range(0, H, 40):
-        draw.line([(0, y), (W, y)], fill=(255, 100, 0, 10))
-
-    # ── DIAGONAL SLASH DECORATIONS ──
     for i in range(-5, 20):
         offset = i * 60
-        draw.line([(offset, 0), (offset + H, H)], fill=(255, 100, 0), width=1)
+        draw.line([(offset, 0), (offset + H, H)], fill=(255, 100, 0))
 
-    # ── CORNER BRACKETS (FPS HUD) ──
     bracket_color = (255, 140, 0)
     bracket_len = 30
     thick = 3
-    # Top-left
-    draw.rectangle([(15, 15), (15 + bracket_len, 15 + thick)], fill=bracket_color)
-    draw.rectangle([(15, 15), (15 + thick, 15 + bracket_len)], fill=bracket_color)
-    # Top-right
-    draw.rectangle([(W - 15 - bracket_len, 15), (W - 15, 15 + thick)], fill=bracket_color)
-    draw.rectangle([(W - 15 - thick, 15), (W - 15, 15 + bracket_len)], fill=bracket_color)
-    # Bottom-left
-    draw.rectangle([(15, H - 15 - thick), (15 + bracket_len, H - 15)], fill=bracket_color)
-    draw.rectangle([(15, H - 15 - bracket_len), (15 + thick, H - 15)], fill=bracket_color)
-    # Bottom-right
-    draw.rectangle([(W - 15 - bracket_len, H - 15 - thick), (W - 15, H - 15)], fill=bracket_color)
-    draw.rectangle([(W - 15 - thick, H - 15 - bracket_len), (W - 15, H - 15)], fill=bracket_color)
+    draw.rectangle([(15, 15), (15+bracket_len, 15+thick)], fill=bracket_color)
+    draw.rectangle([(15, 15), (15+thick, 15+bracket_len)], fill=bracket_color)
+    draw.rectangle([(W-15-bracket_len, 15), (W-15, 15+thick)], fill=bracket_color)
+    draw.rectangle([(W-15-thick, 15), (W-15, 15+bracket_len)], fill=bracket_color)
+    draw.rectangle([(15, H-15-thick), (15+bracket_len, H-15)], fill=bracket_color)
+    draw.rectangle([(15, H-15-bracket_len), (15+thick, H-15)], fill=bracket_color)
+    draw.rectangle([(W-15-bracket_len, H-15-thick), (W-15, H-15)], fill=bracket_color)
+    draw.rectangle([(W-15-thick, H-15-bracket_len), (W-15, H-15)], fill=bracket_color)
 
-    # ── LEFT SIDE GLOW PANEL ──
     for i in range(280, 0, -1):
-        alpha = int(80 * (1 - i / 280))
         draw.rectangle([(0, 0), (i, H)], fill=(255, 80, 0))
 
-    # ── HEXAGON PATTERN (RPG style) ──
-    for hx, hy, size, alpha in [
-        (80, 170, 140, 30),
-        (80, 170, 120, 20),
-        (80, 170, 100, 15),
-    ]:
+    for hx, hy, size in [(80, 170, 140), (80, 170, 120), (80, 170, 100)]:
         draw_hexagon(draw, hx, hy, size, outline=(255, 140, 0))
 
-    # ── AVATAR GLOW ──
     for r in range(100, 75, -3):
-        glow_alpha = int(120 * (1 - (r - 75) / 25))
-        draw.ellipse(
-            [(80 - r, 170 - r), (80 + r, 170 + r)],
-            outline=(255, 120, 0)
-        )
+        draw.ellipse([(80-r, 170-r), (80+r, 170+r)], outline=(255, 120, 0))
 
-    # ── AVATAR ──
     try:
         avatar_img = Image.open(io.BytesIO(avatar_data)).resize((140, 140)).convert("RGBA")
         mask = Image.new("L", (140, 140), 0)
         ImageDraw.Draw(mask).ellipse((0, 0, 140, 140), fill=255)
         avatar_img.putalpha(mask)
-
-        # Orange border
         border_size = 154
         border = Image.new("RGBA", (border_size, border_size), (0, 0, 0, 0))
-        ImageDraw.Draw(border).ellipse((0, 0, border_size - 1, border_size - 1), fill=(255, 140, 0))
-        card.paste(border, (80 - border_size // 2, 170 - border_size // 2), border)
-
-        # Inner dark border
+        ImageDraw.Draw(border).ellipse((0, 0, border_size-1, border_size-1), fill=(255, 140, 0))
+        card.paste(border, (80-border_size//2, 170-border_size//2), border)
         inner_size = 148
         inner = Image.new("RGBA", (inner_size, inner_size), (0, 0, 0, 0))
-        ImageDraw.Draw(inner).ellipse((0, 0, inner_size - 1, inner_size - 1), fill=(20, 15, 10))
-        card.paste(inner, (80 - inner_size // 2, 170 - inner_size // 2), inner)
-
-        card.paste(avatar_img, (80 - 70, 170 - 70), avatar_img)
+        ImageDraw.Draw(inner).ellipse((0, 0, inner_size-1, inner_size-1), fill=(20, 15, 10))
+        card.paste(inner, (80-inner_size//2, 170-inner_size//2), inner)
+        card.paste(avatar_img, (80-70, 170-70), avatar_img)
     except Exception as e:
         print(f"Avatar error: {e}")
 
-    # ── VERTICAL SEPARATOR LINE ──
-    for y in range(30, H - 30):
-        ratio = abs(y - H // 2) / (H // 2)
+    for y in range(30, H-30):
+        ratio = abs(y - H//2) / (H//2)
         brightness = int(255 * (1 - ratio * 0.5))
-        draw.point((195, y), fill=(brightness, int(brightness * 0.55), 0))
+        draw.point((195, y), fill=(brightness, int(brightness*0.55), 0))
 
-    # ── RIGHT PANEL CONTENT ──
     text_x = 220
-
-    # SERVER NAME tag
-    draw.rectangle([(text_x, 38), (text_x + 180, 62)], fill=(255, 100, 0))
-    draw.rectangle([(text_x + 178, 38), (text_x + 188, 62)], fill=(200, 70, 0))
-    draw.text((text_x + 8, 43), server_name.upper()[:20], fill=(255, 255, 255))
-
-    # PLAYER JOINED text
+    draw.rectangle([(text_x, 38), (text_x+180, 62)], fill=(255, 100, 0))
+    draw.text((text_x+8, 43), server_name.upper()[:20], fill=(255, 255, 255))
     draw.text((text_x, 78), "PLAYER  JOINED  THE  SERVER", fill=(255, 140, 0))
-
-    # Divider line with glow
-    for thickness in range(3, 0, -1):
-        alpha = 255 - (3 - thickness) * 80
-        draw.rectangle(
-            [(text_x, 108 - thickness), (W - 40, 108 + thickness)],
-            fill=(255, 100, 0)
-        )
-
-    # USERNAME large
+    draw.rectangle([(text_x, 108), (W-40, 110)], fill=(255, 100, 0))
     draw.text((text_x, 120), username, fill=(255, 255, 255))
-
-    # Stats bar (RPG style)
     draw.text((text_x, 185), "MEMBER ID", fill=(255, 100, 0))
-    draw.text((text_x + 130, 185), f"#{member_count:04d}", fill=(255, 200, 100))
+    draw.text((text_x+130, 185), f"#{member_count:04d}", fill=(255, 200, 100))
+    draw.text((text_x+320, 185), "STATUS", fill=(255, 100, 0))
+    draw.text((text_x+420, 185), "ACTIVE", fill=(100, 255, 100))
 
-    draw.text((text_x + 320, 185), "STATUS", fill=(255, 100, 0))
-    draw.text((text_x + 420, 185), "ACTIVE", fill=(100, 255, 100))
-
-    # XP Bar (RPG element)
     bar_x, bar_y = text_x, 215
     bar_w, bar_h = 480, 12
-    draw.rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], fill=(30, 20, 10))
-    draw.rectangle([(bar_x, bar_y), (bar_x + bar_w, bar_y + bar_h)], outline=(255, 100, 0))
+    draw.rectangle([(bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h)], fill=(30, 20, 10))
+    draw.rectangle([(bar_x, bar_y), (bar_x+bar_w, bar_y+bar_h)], outline=(255, 100, 0))
     fill_w = min(bar_w, max(20, (member_count % 100) * bar_w // 100))
     for bx in range(fill_w):
         ratio = bx / bar_w
         r = int(255 * (1 - ratio * 0.3))
         g = int(100 + 50 * ratio)
-        b = 0
-        draw.line([(bar_x + bx, bar_y + 1), (bar_x + bx, bar_y + bar_h - 1)], fill=(r, g, b))
-    draw.text((bar_x, bar_y + 16), "REPUTATION XP", fill=(150, 100, 50))
-    draw.text((bar_x + 390, bar_y + 16), f"{member_count % 100}/100", fill=(255, 140, 0))
-
-    # Bottom tagline
-    draw.rectangle([(text_x, 285), (W - 40, 287)], fill=(80, 50, 0))
+        draw.line([(bar_x+bx, bar_y+1), (bar_x+bx, bar_y+bar_h-1)], fill=(r, g, 0))
+    draw.text((bar_x, bar_y+16), "REPUTATION XP", fill=(150, 100, 50))
+    draw.text((bar_x+390, bar_y+16), f"{member_count % 100}/100", fill=(255, 140, 0))
+    draw.rectangle([(text_x, 285), (W-40, 287)], fill=(80, 50, 0))
     draw.text((text_x, 293), "WELCOME  TO  THE  BATTLEFIELD  -  PROVE  YOUR  WORTH", fill=(100, 70, 30))
 
-    # ── SCAN LINE EFFECT ──
     for y in range(0, H, 4):
         draw.line([(0, y), (W, y)], fill=(0, 0, 0))
 
-    # ── TOP RIGHT HUD ──
-    draw.text((W - 120, 20), "HCD // v1.0", fill=(255, 100, 0))
-    draw.text((W - 100, 35), "SECURE LINK", fill=(100, 255, 100))
+    draw.text((W-120, 20), "HCD // v1.0", fill=(255, 100, 0))
+    draw.text((W-100, 35), "SECURE LINK", fill=(100, 255, 100))
 
     return card
 
-
+# ===== WELCOME + AUTO ROLE =====
 @bot.event
 async def on_ready():
     print(f"Bot {bot.user} siap!")
+    bot.add_view(TicketView())
+    bot.add_view(CloseTicketView())
 
 @bot.event
 async def on_member_join(member):
-    # Auto Role
     role = discord.utils.get(member.guild.roles, name=AUTO_ROLE_NAME)
     if role:
         await member.add_roles(role)
-        print(f"Role {AUTO_ROLE_NAME} diberikan ke {member.name}")
 
-    # Cari channel welcome
     channel = None
     for ch in member.guild.text_channels:
         if "welcome" in ch.name.lower():
@@ -212,31 +152,141 @@ async def on_member_join(member):
     if not channel:
         return
 
-    # Download avatar
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(str(member.display_avatar.url)) as resp:
                 avatar_data = await resp.read()
     except Exception as e:
-        print(f"Gagal download avatar: {e}")
         await channel.send(f"Welcome {member.mention} ke **{member.guild.name}**!")
         return
 
-    card = make_welcome_card(
-        avatar_data,
-        member.name,
-        member.guild.member_count,
-        member.guild.name
-    )
-
+    card = make_welcome_card(avatar_data, member.name, member.guild.member_count, member.guild.name)
     output = io.BytesIO()
     card.save(output, format="PNG")
     output.seek(0)
+    await channel.send(f"Welcome {member.mention}!", file=discord.File(output, "welcome.png"))
 
-    await channel.send(
-        f"Welcome {member.mention}!",
-        file=discord.File(output, "welcome.png")
+# ===== TICKET SYSTEM =====
+class TicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Buat Ticket", style=discord.ButtonStyle.primary, emoji="🎫", custom_id="create_ticket")
+    async def create_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        guild = interaction.guild
+        user = interaction.user
+
+        existing = discord.utils.get(guild.text_channels, name=f"ticket-{user.name.lower()}")
+        if existing:
+            await interaction.response.send_message(f"Kamu sudah punya ticket aktif: {existing.mention}", ephemeral=True)
+            return
+
+        category = discord.utils.get(guild.categories, name=TICKET_CATEGORY)
+        if not category:
+            category = await guild.create_category(TICKET_CATEGORY)
+
+        support_role = discord.utils.get(guild.roles, name=SUPPORT_ROLE)
+
+        overwrites = {
+            guild.default_role: discord.PermissionOverwrite(read_messages=False),
+            user: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+        }
+        if support_role:
+            overwrites[support_role] = discord.PermissionOverwrite(read_messages=True, send_messages=True)
+
+        channel = await guild.create_text_channel(
+            f"ticket-{user.name.lower()}",
+            category=category,
+            overwrites=overwrites
+        )
+
+        embed = discord.Embed(
+            title="🎫 Ticket Support HCD",
+            description=(
+                f"Halo {user.mention}! Selamat datang di support HCD.\n\n"
+                f"**Jelaskan masalah kamu** dan tim support akan segera membantu!\n\n"
+                f"```\n"
+                f"User    : {user.name}\n"
+                f"ID      : {user.id}\n"
+                f"Server  : {guild.name}\n"
+                f"```"
+            ),
+            color=discord.Color.orange()
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        embed.set_footer(text="HCD Support System • Klik tutup jika sudah selesai")
+
+        await channel.send(
+            content=f"{user.mention} {support_role.mention if support_role else ''}",
+            embed=embed,
+            view=CloseTicketView()
+        )
+        await interaction.response.send_message(
+            f"Ticket berhasil dibuat! {channel.mention}",
+            ephemeral=True
+        )
+
+
+class CloseTicketView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Tutup Ticket", style=discord.ButtonStyle.danger, emoji="🔒", custom_id="close_ticket")
+    async def close_ticket(self, interaction: discord.Interaction, button: discord.ui.Button):
+        embed = discord.Embed(
+            title="Ticket Ditutup",
+            description=f"Ticket ditutup oleh {interaction.user.mention}\nChannel akan dihapus dalam 5 detik...",
+            color=discord.Color.red()
+        )
+        await interaction.response.send_message(embed=embed)
+        await asyncio.sleep(5)
+        await interaction.channel.delete()
+
+
+@bot.command()
+@commands.has_permissions(administrator=True)
+async def setup_ticket(ctx):
+    # Hapus pesan command
+    await ctx.message.delete()
+
+    # Cari atau buat channel ticket
+    ticket_channel = discord.utils.get(ctx.guild.text_channels, name="ticket")
+    if not ticket_channel:
+        overwrites = {
+            ctx.guild.default_role: discord.PermissionOverwrite(
+                read_messages=True,
+                send_messages=False
+            )
+        }
+        ticket_channel = await ctx.guild.create_text_channel(
+            "ticket",
+            overwrites=overwrites,
+            topic="Klik tombol di bawah untuk membuat ticket support"
+        )
+
+    embed = discord.Embed(
+        title="🎫 HCD SUPPORT TICKET",
+        description=(
+            "**Butuh bantuan? Kami siap membantu kamu!**\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "📌 **Cara Membuat Ticket:**\n"
+            "> Klik tombol **Buat Ticket** di bawah\n"
+            "> Channel private akan otomatis dibuat\n"
+            "> Jelaskan masalah kamu\n"
+            "> Tim support akan segera membalas\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━\n\n"
+            "⚠️ **Peraturan Ticket:**\n"
+            "> Gunakan ticket dengan bijak\n"
+            "> Jangan spam atau abuse sistem ticket\n"
+            "> Satu user hanya boleh punya 1 ticket aktif\n\n"
+            "━━━━━━━━━━━━━━━━━━━━━━"
+        ),
+        color=discord.Color.orange()
     )
+    embed.set_footer(text="HCD Support System • Tersedia 24/7")
+
+    await ticket_channel.send(embed=embed, view=TicketView())
+    await ctx.send(f"Panel ticket berhasil dibuat di {ticket_channel.mention}!", delete_after=5)
 
 # ===== ANTI SPAM =====
 @bot.event
@@ -260,7 +310,7 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-# ===== MODERASI COMMANDS =====
+# ===== MODERASI =====
 @bot.command()
 @commands.has_permissions(kick_members=True)
 async def kick(ctx, member: discord.Member, *, reason="Tidak ada alasan"):
